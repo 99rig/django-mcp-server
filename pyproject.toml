@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "django-mcp-server"
+version = "0.1.0"
+description = "Full MCP server implementation for Django. Expose tools and resources via the Model Context Protocol."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "MCP Standard", email = "noreply@mcpstandard.dev"}
+]
+keywords = ["mcp", "django", "model-context-protocol", "ai", "tools", "llm", "agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Django",
+    "Framework :: Django :: 4.0",
+    "Framework :: Django :: 4.1",
+    "Framework :: Django :: 4.2",
+    "Framework :: Django :: 5.0",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "Django>=4.0",
+]
+
+[project.urls]
+Homepage = "https://mcpstandard.dev"
+Documentation = "https://github.com/99rig/django-mcp-server#readme"
+Repository = "https://github.com/99rig/django-mcp-server"
+Issues = "https://github.com/99rig/django-mcp-server/issues"
+
+[tool.setuptools.packages.find]
+include = ["mcp_server*"]
