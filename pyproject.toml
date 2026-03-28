@@ -3,12 +3,11 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "django-mcp-server"
+name = "mcp-django-server"
 version = "0.1.0"
 description = "Full MCP server implementation for Django. Expose tools and resources via the Model Context Protocol."
 readme = "README.md"
 requires-python = ">=3.8"
-license = "MIT"
 authors = [
     {name = "MCP Standard", email = "noreply@mcpstandard.dev"}
 ]
@@ -21,6 +20,7 @@ classifiers = [
     "Framework :: Django :: 4.2",
     "Framework :: Django :: 5.0",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",

@@ -1,4 +1,4 @@
-# django-mcp-server
+# mcp-django-server
 
 Full MCP (Model Context Protocol) server implementation for Django. Expose tools and resources to AI agents with simple decorators.
 
@@ -13,7 +13,7 @@ Full MCP (Model Context Protocol) server implementation for Django. Expose tools
 ## Installation
 
 ```bash
-pip install django-mcp-server
+pip install mcp-django-server
 ```
 
 ## Quick Start
@@ -226,4 +226,4 @@ MIT
 
 - [MCP Specification](https://spec.modelcontextprotocol.io/)
 - [MCP Standard](https://mcpstandard.dev)
-- [GitHub Repository](https://github.com/99rig/django-mcp-server)
+- [GitHub Repository](https://github.com/99rig/mcp-django-server)
