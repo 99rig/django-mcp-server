@@ -52,6 +52,14 @@ class MCPRegistry:
     def register_tool(self, name: str, func: Callable, description: str, input_schema: Dict[str, Any]):
         """Register a tool."""
         self.tools[name] = ToolDefinition(name, func, description, input_schema)
+
+        # Auto-update discovery manifest if django-mcp-discovery is installed
+        try:
+            from mcp_discovery.manifest import update_tools_preview
+            update_tools_preview({"name": name, "description": description})
+        except (ImportError, AttributeError):
+            # django-mcp-discovery not installed or different API
+            pass
     
     def register_resource(self, uri: str, func: Callable, name: str, description: str, mime_type: str):
         """Register a resource."""

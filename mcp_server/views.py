@@ -31,11 +31,16 @@ class MCPView(View):
             body = json.loads(request.body)
         except json.JSONDecodeError:
             return self._error(-32700, "Parse error")
-        
+
         method = body.get("method")
         params = body.get("params", {})
         req_id = body.get("id")
-        
+
+        # Check disabled_verbs (schema msaleme)
+        disabled = getattr(settings, "MCP_DISABLED_VERBS", [])
+        if method in disabled:
+            return self._error(-32601, f"Method disabled: {method}", req_id)
+
         # Route to appropriate handler
         handlers = {
             "initialize": self._handle_initialize,
@@ -46,11 +51,11 @@ class MCPView(View):
             "prompts/list": self._handle_prompts_list,
             "prompts/get": self._handle_prompts_get,
         }
-        
+
         handler = handlers.get(method)
         if not handler:
             return self._error(-32601, f"Method not found: {method}", req_id)
-        
+
         try:
             result = handler(params)
             return JsonResponse({
@@ -63,13 +68,20 @@ class MCPView(View):
     
     def _handle_initialize(self, params):
         """Handle initialize request."""
+        capabilities = {
+            "tools": {"listChanged": False},
+            "resources": {"listChanged": False},
+            "prompts": {"listChanged": False},
+        }
+
+        # Add disabled_verbs if configured (schema msaleme)
+        disabled = getattr(settings, "MCP_DISABLED_VERBS", [])
+        if disabled:
+            capabilities["disabled_verbs"] = disabled
+
         return {
             "protocolVersion": "2025-06-18",
-            "capabilities": {
-                "tools": {"listChanged": False},
-                "resources": {"listChanged": False},
-                "prompts": {"listChanged": False},
-            },
+            "capabilities": capabilities,
             "serverInfo": {
                 "name": getattr(settings, 'MCP_SERVER_NAME', 'Django MCP Server'),
                 "version": getattr(settings, 'MCP_SERVER_VERSION', '0.1.0'),
@@ -92,14 +104,18 @@ class MCPView(View):
         """Execute a tool."""
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
-        
+
+        # MCP-002 fix: explicit allowlist check BEFORE parsing arguments
         tool = registry.get_tool(tool_name)
         if not tool:
-            raise ValueError(f"Tool not found: {tool_name}")
-        
+            raise ValueError(f"Unknown tool: {tool_name}")
+
+        # Validate arguments against inputSchema before execution
+        self._validate_arguments(arguments, tool.input_schema)
+
         # Execute the tool function
         result = tool.func(**arguments)
-        
+
         # Wrap result in MCP content format
         return {
             "content": [
@@ -110,6 +126,21 @@ class MCPView(View):
             ]
         }
     
+    def _validate_arguments(self, arguments, schema):
+        """Validate arguments against JSON Schema. Raises ValueError if invalid."""
+        required = schema.get("required", [])
+        properties = schema.get("properties", {})
+
+        # Check required fields
+        for field in required:
+            if field not in arguments:
+                raise ValueError(f"Missing required argument: {field}")
+
+        # Check for unknown arguments
+        for key in arguments:
+            if key not in properties:
+                raise ValueError(f"Unknown argument: {key}")
+
     def _handle_resources_list(self, params):
         """List all registered resources."""
         resources = []
@@ -120,30 +151,35 @@ class MCPView(View):
                 "description": resource.description,
                 "mimeType": resource.mime_type,
             })
-        
+
         return {"resources": resources}
     
     def _handle_resources_read(self, params):
         """Read a resource."""
         uri = params.get("uri")
-        
-        # Find matching resource
+
+        # MCP-005 fix: reject dangerous URI schemes
+        BLOCKED_SCHEMES = ["file://", "ftp://", "data:", "javascript:"]
+        for scheme in BLOCKED_SCHEMES:
+            if uri.lower().startswith(scheme):
+                raise ValueError(f"URI scheme not allowed: {uri}")
+
+        # Only allow URIs that match a registered resource template (allowlist)
         resource = None
         for r in registry.list_resources():
-            # Simple URI matching (can be improved with regex)
             if r.uri == uri or self._match_uri_template(r.uri, uri):
                 resource = r
                 break
-        
+
         if not resource:
             raise ValueError(f"Resource not found: {uri}")
-        
+
         # Extract parameters from URI
         uri_params = self._extract_uri_params(resource.uri, uri)
-        
+
         # Execute resource function
         content = resource.func(**uri_params)
-        
+
         return {
             "contents": [
                 {
