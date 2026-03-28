@@ -8,6 +8,7 @@ from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from .registry import registry
+from .constants import DEFAULT_PROTOCOL_VERSION
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -80,7 +81,7 @@ class MCPView(View):
             capabilities["disabled_verbs"] = disabled
 
         return {
-            "protocolVersion": "2025-06-18",
+            "protocolVersion": getattr(settings, 'MCP_PROTOCOL_VERSION', DEFAULT_PROTOCOL_VERSION),
             "capabilities": capabilities,
             "serverInfo": {
                 "name": getattr(settings, 'MCP_SERVER_NAME', 'Django MCP Server'),
