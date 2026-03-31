@@ -2,6 +2,7 @@
 MCP JSON-RPC 2.0 endpoint view.
 """
 import json
+import importlib
 from django.views import View
 from django.http import JsonResponse
 from django.conf import settings
@@ -11,11 +12,26 @@ from .registry import registry
 from .constants import DEFAULT_PROTOCOL_VERSION
 
 
+def _load_auth_backend():
+    """
+    Load the custom auth backend class configured in MCP_AUTH_BACKEND.
+
+    Expected format: 'myapp.mcp.auth.MyAuthClass'
+    The class must implement: authenticate(token: str) -> User | None
+    """
+    backend_path = getattr(settings, 'MCP_AUTH_BACKEND', None)
+    if not backend_path:
+        return None
+    module_path, class_name = backend_path.rsplit('.', 1)
+    module = importlib.import_module(module_path)
+    return getattr(module, class_name)
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class MCPView(View):
     """
     MCP JSON-RPC 2.0 endpoint.
-    
+
     Handles:
     - initialize
     - tools/list
@@ -24,10 +40,45 @@ class MCPView(View):
     - resources/read
     - prompts/list
     - prompts/get
+
+    Authentication:
+    Set MCP_AUTH_BACKEND in Django settings to a dotted path of a class that
+    implements authenticate(token: str) -> User | None.
+    If set, every request must include a valid Bearer token in the Authorization
+    header. The authenticated user is injected into tools that declare a `user`
+    parameter.
     """
-    
+
+    def _authenticate(self, request):
+        """
+        Authenticate the request using the configured MCP_AUTH_BACKEND.
+
+        Returns the authenticated user or None (if no backend is configured).
+        Raises PermissionError if auth is required but fails.
+        """
+        backend_class = _load_auth_backend()
+        if backend_class is None:
+            return None
+
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        if not auth_header.startswith('Bearer '):
+            raise PermissionError("Missing or invalid Authorization header")
+
+        token = auth_header[len('Bearer '):]
+        user = backend_class().authenticate(token)
+        if user is None:
+            raise PermissionError("Invalid or expired token")
+
+        return user
+
     def post(self, request):
         """Handle JSON-RPC 2.0 requests."""
+        # Authenticate before parsing body (avoids leaking method names on 401)
+        try:
+            user = self._authenticate(request)
+        except PermissionError as e:
+            return JsonResponse({"error": str(e)}, status=401)
+
         try:
             body = json.loads(request.body)
         except json.JSONDecodeError:
@@ -45,8 +96,8 @@ class MCPView(View):
         # Route to appropriate handler
         handlers = {
             "initialize": self._handle_initialize,
-            "tools/list": self._handle_tools_list,
-            "tools/call": self._handle_tools_call,
+            "tools/list": lambda p: self._handle_tools_list(p, user),
+            "tools/call": lambda p: self._handle_tools_call(p, user),
             "resources/list": self._handle_resources_list,
             "resources/read": self._handle_resources_read,
             "prompts/list": self._handle_prompts_list,
@@ -89,19 +140,22 @@ class MCPView(View):
             }
         }
     
-    def _handle_tools_list(self, params):
-        """List all registered tools."""
+    def _handle_tools_list(self, params, user=None):
+        """List all registered tools, filtered by condition if applicable."""
         tools = []
         for tool in registry.list_tools():
+            # Skip tools whose condition is not satisfied for this user
+            if tool.condition is not None and not tool.condition(user):
+                continue
             tools.append({
                 "name": tool.name,
                 "description": tool.description,
                 "inputSchema": tool.input_schema,
             })
-        
+
         return {"tools": tools}
-    
-    def _handle_tools_call(self, params):
+
+    def _handle_tools_call(self, params, user=None):
         """Execute a tool."""
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
@@ -111,8 +165,16 @@ class MCPView(View):
         if not tool:
             raise ValueError(f"Unknown tool: {tool_name}")
 
+        # Check condition for the calling user
+        if tool.condition is not None and not tool.condition(user):
+            raise ValueError(f"Tool not available: {tool_name}")
+
         # Validate arguments against inputSchema before execution
         self._validate_arguments(arguments, tool.input_schema)
+
+        # Inject authenticated user if the tool requests it
+        if tool.needs_user:
+            arguments = dict(arguments, user=user)
 
         # Execute the tool function
         result = tool.func(**arguments)

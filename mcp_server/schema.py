@@ -34,8 +34,8 @@ def generate_schema_from_hints(func) -> dict:
     required = []
     
     for param_name, param in sig.parameters.items():
-        # Skip self/cls
-        if param_name in ('self', 'cls'):
+        # Skip self/cls and user (injected by auth layer, not exposed to MCP clients)
+        if param_name in ('self', 'cls', 'user'):
             continue
         
         # Get type hint
