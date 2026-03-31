@@ -8,6 +8,8 @@ Full MCP (Model Context Protocol) server implementation for Django. Expose tools
 - 🔄 **Auto-discovery** - Automatically finds `mcp_tools.py` in all Django apps
 - 📝 **Type-safe** - Generates JSON Schema from Python type hints
 - 🎯 **MCP compliant** - Full JSON-RPC 2.0 implementation (spec 2025-06-18)
+- 🔒 **Custom auth** - Plug in any token-based authentication backend
+- 👤 **User context** - Authenticated user injected automatically into tools
 - 🔧 **Zero config** - Works out of the box
 
 ## Installation
@@ -101,6 +103,57 @@ curl -X POST http://localhost:8000/mcp/ \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_products","arguments":{"query":"laptop"}}}'
 ```
 
+## Authentication
+
+### Custom auth backend
+
+Set `MCP_AUTH_BACKEND` in `settings.py` to require token authentication on every MCP request.
+
+```python
+# settings.py
+MCP_AUTH_BACKEND = 'myapp.mcp.auth.TokenAuth'
+```
+
+The class must implement `authenticate(token: str) -> User | None`:
+
+```python
+# myapp/mcp/auth.py
+class TokenAuth:
+    def authenticate(self, token):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        try:
+            return User.objects.get(mcp_token=token)
+        except User.DoesNotExist:
+            return None
+```
+
+When configured, every request must include `Authorization: Bearer <token>`.
+A missing or invalid token returns HTTP 401.
+
+### User context in tools
+
+If your tool function declares a `user` parameter, the authenticated user is injected automatically. The `user` parameter is excluded from the MCP input schema (not visible to clients).
+
+```python
+@mcp_tool(description="Get my listings")
+def get_my_listings(user):
+    return list(Listing.objects.filter(owner=user).values())
+```
+
+### Conditional tools
+
+Use `condition=` to expose a tool only when a predicate on the user is satisfied. The tool is hidden from `tools/list` and blocked in `tools/call` when the condition returns `False`.
+
+```python
+@mcp_tool(
+    description="Publish a listing",
+    condition=lambda user: hasattr(user, 'seller_profile')
+)
+def publish_listing(user, listing_id: int):
+    ...
+```
+
 ## API Reference
 
 ### @mcp_tool
@@ -116,11 +169,13 @@ def my_tool(param1: str, param2: int = 10):
 **Parameters:**
 - `name` (str, optional): Tool name. Defaults to function name.
 - `description` (str): Tool description for AI agents.
+- `condition` (callable, optional): `(user) -> bool`. When set, the tool is only listed/callable when the condition is satisfied for the current user.
 
 **Type Hints:**
 - Function type hints are automatically converted to JSON Schema
 - Supported types: `str`, `int`, `float`, `bool`, `list`, `dict`
 - Parameters without defaults are marked as required
+- The `user` parameter (if present) is injected by the auth layer and excluded from the schema
 
 ### @mcp_resource
 
