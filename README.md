@@ -32,6 +32,15 @@ INSTALLED_APPS = [
 # Optional configuration
 MCP_SERVER_NAME = "My Django MCP Server"
 MCP_SERVER_VERSION = "1.0.0"
+
+# Auth backend (see Authentication section)
+# MCP_AUTH_BACKEND = 'myapp.mcp.auth.TokenAuth'
+
+# Public methods — skip auth (default: initialize + notifications/initialized)
+# MCP_PUBLIC_METHODS = ['initialize', 'notifications/initialized']
+
+# Rate limiting via Django cache (calls per period in seconds)
+# MCP_RATE_LIMIT = {"calls": 100, "period": 60}
 ```
 
 ### 2. Include URLs
@@ -153,6 +162,45 @@ Use `condition=` to expose a tool only when a predicate on the user is satisfied
 def publish_listing(user, listing_id: int):
     ...
 ```
+
+## Hooks
+
+Override `MCPView` methods to add custom logic without touching the core dispatch:
+
+```python
+# myapp/views.py
+from mcp_server.views import MCPView
+import logging
+
+logger = logging.getLogger(__name__)
+
+class AuditedMCPView(MCPView):
+
+    def before_dispatch(self, method, user):
+        logger.info("MCP call: method=%s user=%s", method, getattr(user, 'pk', None))
+
+    def after_tool_call(self, user, tool_name, result, duration_ms):
+        logger.info("Tool %s completed in %.1fms for user %s", tool_name, duration_ms, user)
+```
+
+```python
+# urls.py
+from myapp.views import AuditedMCPView
+urlpatterns = [
+    path('mcp/', AuditedMCPView.as_view()),
+]
+```
+
+## Rate Limiting
+
+Enable per-user (or per-IP for anonymous) rate limiting via Django's cache:
+
+```python
+# settings.py
+MCP_RATE_LIMIT = {"calls": 100, "period": 60}  # 100 requests per 60 seconds
+```
+
+Returns HTTP 429 with a JSON-RPC error when the limit is exceeded.
 
 ## API Reference
 
