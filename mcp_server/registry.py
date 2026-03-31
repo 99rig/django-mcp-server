@@ -12,6 +12,8 @@ class ToolDefinition:
     func: Callable
     description: str
     input_schema: Dict[str, Any]
+    needs_user: bool = False
+    condition: Optional[Callable] = None
 
 
 @dataclass
@@ -49,9 +51,17 @@ class MCPRegistry:
             cls._instance.prompts = {}
         return cls._instance
     
-    def register_tool(self, name: str, func: Callable, description: str, input_schema: Dict[str, Any]):
+    def register_tool(
+        self,
+        name: str,
+        func: Callable,
+        description: str,
+        input_schema: Dict[str, Any],
+        needs_user: bool = False,
+        condition: Optional[Callable] = None,
+    ):
         """Register a tool."""
-        self.tools[name] = ToolDefinition(name, func, description, input_schema)
+        self.tools[name] = ToolDefinition(name, func, description, input_schema, needs_user, condition)
 
         # Auto-update discovery manifest if django-mcp-discovery is installed
         try:

@@ -1,36 +1,55 @@
 """
 Decorators for registering MCP tools, resources, and prompts.
 """
+import inspect
 from functools import wraps
 from .registry import registry
 from .schema import generate_schema_from_hints
 
 
-def mcp_tool(name=None, description=""):
+def mcp_tool(name=None, description="", condition=None):
     """
     Decorator to register a function as an MCP tool.
-    
-    Example:
-        @mcp_tool(name="search_products", description="Search for products")
-        def search_products(query: str, limit: int = 10):
-            return Product.objects.filter(name__icontains=query)[:limit]
-    
+
+    If the function has a `user` parameter, it will be injected automatically
+    by the auth layer and excluded from the MCP input schema.
+
     Args:
         name: Tool name (defaults to function name)
         description: Tool description for AI agents
+        condition: Optional callable(user) -> bool. If provided, the tool is
+                   only listed/callable when condition(user) returns True.
+
+    Example (no auth):
+        @mcp_tool(name="search_products", description="Search for products")
+        def search_products(query: str, limit: int = 10):
+            return Product.objects.filter(name__icontains=query)[:limit]
+
+    Example (with user context):
+        @mcp_tool(description="Get my listings")
+        def get_my_listing(user):
+            return Immobile.objects.filter(venditore__user=user).values(...)
+
+    Example (conditional tool):
+        @mcp_tool(description="Seller-only tool", condition=lambda u: hasattr(u, 'venditore'))
+        def publish_listing(user, listing_id: int):
+            ...
     """
     def decorator(func):
         tool_name = name or func.__name__
-        
-        # Generate input schema from type hints
+
+        # Detect if the function declares a `user` parameter
+        sig = inspect.signature(func)
+        needs_user = 'user' in sig.parameters
+
+        # Generate input schema (excludes `user` parameter automatically)
         input_schema = generate_schema_from_hints(func)
-        
+
         # Register the tool
-        registry.register_tool(tool_name, func, description, input_schema)
-        
-        # Return original function unchanged
+        registry.register_tool(tool_name, func, description, input_schema, needs_user, condition)
+
         return func
-    
+
     return decorator
 
 
